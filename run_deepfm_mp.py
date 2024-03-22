@@ -17,10 +17,10 @@ import os
 import json
 
 
-import lsecp
-import ckpt_with_pickle
-import ckpt_with_rocksdb
-import tracker
+from lsecp import LSECP
+from ckpt_with_pickle import CkptWithPickle
+from ckpt_with_rocksdb import CkptWithRocksdb
+from tracker import *
 
 
 def run():
@@ -86,21 +86,21 @@ def run():
         if "emb" in name:
             emb_names.append(name)
     
-    track = tracker.Tracker()
+    track = Tracker()
     ckpt_sys = None
     ckpt_path = args.ckpt_dir
     if args.ckpt_method == "lsecp":
         ckpt_path = args.ckpt_dir + "/lsecp"
-        ckpt_sys = lsecp.LSECP(ckpt_path, emb_names, args.lsecp_eperc, args.lsecp_clen)
+        ckpt_sys = LSECP(ckpt_path, emb_names, args.lsecp_eperc, args.lsecp_clen)
     elif args.ckpt_method == "diff":
         ckpt_path = args.ckpt_dir + "/diff"
-        ckpt_sys = ckpt_with_pickle.CkptWithPickle(ckpt_path, emb_names)
+        ckpt_sys = CkptWithPickle(ckpt_path, emb_names)
     elif args.ckpt_method == "incre":
         ckpt_path = args.ckpt_dir + "/incre"
-        ckpt_sys = ckpt_with_pickle.CkptWithPickle(ckpt_path, emb_names)
+        ckpt_sys = CkptWithPickle(ckpt_path, emb_names)
     elif args.ckpt_method == "rocksdb":
         ckpt_path = args.ckpt_dir + "/rocksdb"
-        ckpt_sys = ckpt_with_rocksdb.CkptWithRocksdb(ckpt_path, emb_names)
+        ckpt_sys = CkptWithRocksdb(ckpt_path, emb_names)
         
     perf_count = {}
     do_perf = False
@@ -149,7 +149,7 @@ def run():
                 # save non-emb params
                 # user-defined space
                 mlp_start = time.time()
-                tracker.ckpt_non_emb(model, ckpt_path, iter)
+                ckpt_non_emb(model, ckpt_path, iter)
                 mlp_time = time.time() - mlp_start
                 
                 if do_perf:
@@ -166,7 +166,7 @@ def run():
         ckpt_sys.finish()
 
     if do_perf:
-        storage_con = tracker.get_folder_size(ckpt_path)
+        storage_con = get_folder_size(ckpt_path)
         perf_count["storage_consumption"].append(storage_con / (1024*1024))
         
         with open(args.perf_out_path, "w") as json_file:
