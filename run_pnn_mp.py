@@ -114,8 +114,7 @@ def run():
             "emb_f_time": [],
             "emb_time": [],
             "mlp_time": [],
-            "storage_consumption": [],
-            "iter_time": []
+            "storage_consumption": []
         }
         do_perf = True
         
