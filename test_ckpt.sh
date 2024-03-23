@@ -11,6 +11,7 @@ check_freq=10
 num_batches=1000
 
 if [ $lsecp=1 ]; then
+  mkdir -p $ckpt_dir/lsecp
 
   python run_pnn_mp.py --num-batches=$num_batches \
     --ckpt-method="lsecp" \
@@ -24,6 +25,7 @@ if [ $lsecp=1 ]; then
 fi
 
 if [ $diff=1 ]; then
+  mkdir -p $ckpt_dir/diff
 
   python run_pnn_mp.py --num-batches=$num_batches \
     --ckpt-method="diff" \
@@ -37,6 +39,7 @@ if [ $diff=1 ]; then
 fi
 
 if [ $incre=1 ]; then
+  mkdir -p $ckpt_dir/incre
 
   python run_pnn_mp.py --num-batches=$num_batches \
     --ckpt-method="incre" \
@@ -50,6 +53,7 @@ if [ $incre=1 ]; then
 fi
 
 if [ $rocksdb=1 ]; then
+  mkdir -p $ckpt_dir/rocksdb
 
   python run_pnn_mp.py --num-batches=$num_batches \
     --ckpt-method="rocksdb" \
