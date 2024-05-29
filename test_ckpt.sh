@@ -1,67 +1,49 @@
-lsecp=1
-diff=1
-incre=1
-rocksdb=1
+incrcp=$1
+diff=$2
+naive_incre=$3
+
 
 ckpt_dir="/mnt/ssd/deepfm"
-
 dataset_path="/mnt/ssd/dataset/kaggle/train_sample.txt"
+check_freq=100
+num_batches=2100
+result_path=/home/nsccgz_qylin_1/IncrCP_paper/experimental_results/deepfm_100iter_ssd
 
-check_freq=10
-num_batches=1000
-
-if [ $lsecp=1 ]; then
-  mkdir -p $ckpt_dir/lsecp
-
+if [ $incrcp = 1 ]; then
+  mkdir -p $ckpt_dir/incrcp
+  echo "start testing incrcp..."
   python run_deepfm_mp.py --num-batches=$num_batches \
-    --ckpt-method="lsecp" \
+    --ckpt-method="incrcp" \
     --dataset-path=$dataset_path \
     --ckpt-freq=$check_freq \
     --ckpt-dir=$ckpt_dir \
-    --lsecp-eperc=0.01 \
-    --lsecp-clen=10 \
-    --perf-out-path="./lsecp.json"
+    --eperc=0 \
+    --concat=1 \
+    --incrcp-reset-thres=80 \
+    --perf-out-path="$result_path/incrcp.json"
 
 fi
 
-if [ $diff=1 ]; then
+if [ $diff = 1 ]; then
   mkdir -p $ckpt_dir/diff
-
+  echo "start testing diff..."
   python run_deepfm_mp.py --num-batches=$num_batches \
     --ckpt-method="diff" \
     --dataset-path=$dataset_path \
     --ckpt-freq=$check_freq \
     --ckpt-dir=$ckpt_dir \
-    --lsecp-eperc=0.01 \
-    --lsecp-clen=10 \
-    --perf-out-path="./diff.json"
+    --perf-out-path="$result_path/diff.json"
 
 fi
 
-if [ $incre=1 ]; then
-  mkdir -p $ckpt_dir/incre
-
+if [ $naive_incre = 1 ]; then
+  mkdir -p $ckpt_dir/naive_incre
+  echo "start testing naive_incre..."
   python run_deepfm_mp.py --num-batches=$num_batches \
-    --ckpt-method="incre" \
+    --ckpt-method="naive_incre" \
     --dataset-path=$dataset_path \
     --ckpt-freq=$check_freq \
     --ckpt-dir=$ckpt_dir \
-    --lsecp-eperc=0.01 \
-    --lsecp-clen=10 \
-    --perf-out-path="./incre.json"
-
-fi
-
-if [ $rocksdb=1 ]; then
-  mkdir -p $ckpt_dir/rocksdb
-
-  python run_deepfm_mp.py --num-batches=$num_batches \
-    --ckpt-method="rocksdb" \
-    --dataset-path=$dataset_path \
-    --ckpt-freq=$check_freq \
-    --ckpt-dir=$ckpt_dir \
-    --lsecp-eperc=0.01 \
-    --lsecp-clen=10 \
-    --perf-out-path="./rocksdb.json"
+    --perf-out-path="$result_path/naive_incre.json"
 
 fi
