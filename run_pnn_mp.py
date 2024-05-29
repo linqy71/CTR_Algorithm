@@ -16,11 +16,9 @@ import time
 import os
 import json
 
-from lsecp import LSECP
-from ckpt_with_pickle import CkptWithPickle
-from ckpt_with_rocksdb import CkptWithRocksdb
+from incrcp import IncrCP
+from naive_ckpt import NaiveCkpt
 from tracker import *
-
 
 
 def run():
@@ -31,16 +29,17 @@ def run():
     parser.add_argument("--num-batches", type=int, default=0)
     parser.add_argument("--dataset-path", type=str, default="/mnt/ssd/dataset/kaggle/train_sample.txt")
     
-    #ckpt methods: diff, incre, rocksdb, lsecp
-    parser.add_argument("--ckpt-method", type=str, default="lsecp")
-    #ckpt freq: every ckpt_freq iterations
-    parser.add_argument("--ckpt-freq", type=int, default=1)
-    parser.add_argument("--ckpt-dir", type=str, default="/mnt/ssd/pnn")
-    parser.add_argument("--lsecp-eperc", type=float, default=0.01)
-    parser.add_argument("--lsecp-clen", type=int, default=10)
+    #ckpt methods: naive_diff, naive_incre, incrcp
+    parser.add_argument("--ckpt-method", type=str, default="incrcp")
+    #ckpt freq: checkpoint for every {ckpt_freq} iterations
+    parser.add_argument("--ckpt-freq", type=int, default=10)
+    parser.add_argument("--ckpt-dir", type=str, default="/mnt/3dx/checkpoint")
+    parser.add_argument("--eperc", type=float, default=0.01)
+    parser.add_argument("--concat", type=int, default=0)
+    parser.add_argument("--incrcp-reset-thres", type=int, default=100)
     
     # the file name to store perf data
-    parser.add_argument("--perf-out-path", type=str, default="")
+    parser.add_argument("--perf-out-path", type=str, default="./perf_res/incrcp.json")
 
     args = parser.parse_args()
     
@@ -84,7 +83,6 @@ def run():
     epoches = 1
     # device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = PNN_mp.PNN(feature_fields=fields_ka, embed_dim=1024, mlp_dims=(32, 16), dropout=0.0)
-    offsets = np.array((0, *np.cumsum(fields_ka)[:-1]), dtype = np.int64)
     
     emb_names = []
     for name in model.state_dict().keys():
@@ -93,27 +91,22 @@ def run():
     
     tracker = Tracker()
     ckpt_sys = None
-    ckpt_path = args.ckpt_dir
-    if args.ckpt_method == "lsecp":
-        ckpt_path = args.ckpt_dir + "/lsecp"
-        ckpt_sys = LSECP(ckpt_path, emb_names, args.lsecp_eperc, args.lsecp_clen)
+    ckpt_base = True
+    ckpt_path = args.ckpt_dir + "/" + args.ckpt_method
+    if args.ckpt_method == "incrcp":
+        ckpt_sys = IncrCP(ckpt_path, emb_names, args.eperc, args.concat, args.incrcp_reset_thres, 0)
     elif args.ckpt_method == "diff":
-        ckpt_path = args.ckpt_dir + "/diff"
-        ckpt_sys = CkptWithPickle(ckpt_path, emb_names)
-    elif args.ckpt_method == "incre":
-        ckpt_path = args.ckpt_dir + "/incre"
-        ckpt_sys = CkptWithPickle(ckpt_path, emb_names)
-    elif args.ckpt_method == "rocksdb":
-        ckpt_path = args.ckpt_dir + "/rocksdb"
-        ckpt_sys = CkptWithRocksdb(ckpt_path, emb_names)
-        
+        ckpt_sys = NaiveCkpt(ckpt_path, emb_names)
+    elif args.ckpt_method == "naive_incre":
+        ckpt_sys = NaiveCkpt(ckpt_path, emb_names)
+
     perf_count = {}
     do_perf = False
     if args.perf_out_path != "":
         perf_count = {
-            "emb_f_time": [],
-            "emb_time": [],
-            "mlp_time": [],
+            "save_time": [],
+            "list_time": [],
+            "ckpt_time": [],
             "storage_consumption": []
         }
         do_perf = True
@@ -140,42 +133,46 @@ def run():
             train_loss.append(loss.item())
             # x = torch.tensor(x)
             
-            if iter == 0 :
-                # checkpoint base model
-                torch.save(model.state_dict(), ckpt_path + "/base.pt")
-            elif iter % args.ckpt_freq == 0:
-                # checkpoint diff view
-                tracker.add(indexes)
-                diff_view = tracker.cur_view()
-                
-                emb_start = time.time()
-                f_time = ckpt_sys.ckpt_emb(diff_view, model, iter)
-                emb_time = time.time() - emb_start
-                
-                # save non-emb params
-                # user-defined space
-                mlp_start = time.time()
-                ckpt_non_emb(model, ckpt_path, iter)
-                mlp_time = time.time() - mlp_start
+            if iter % args.ckpt_freq == 0:
+                if ckpt_base:
+                    ckpt_base = False
+                    base_name = ckpt_path + "/base." + str(iter) + ".pt"
+                    # checkpoint base model
+                    if args.ckpt_method == "diff":
+                        ckpt_sys.diff_hist = [1]
+                        tracker.reset()
+                    ckpt_time = time.time()
+                    torch.save(model.state_dict(), base_name)
+                    ckpt_time = time.time() - ckpt_time
+                    save_time, list_time = 0, 0
+                else :
+                    # checkpoint diff view
+                    tracker.add(indexes)
+                    diff_view = tracker.cur_view()
+                    
+                    ckpt_time = time.time()
+                    fraction, save_time, list_time = ckpt_sys.ckpt_emb(diff_view, model, iter)
+                    ckpt_time = time.time() - ckpt_time
+                    
+                    if args.ckpt_method != "diff":
+                        tracker.reset()
+                    if args.ckpt_method != "naive_incre":
+                        # may reset baseline ckpt
+                        ckpt_base = ckpt_sys.may_reset_base(fraction)
                 
                 if do_perf:
-                    perf_count["emb_f_time"].append(f_time)
-                    perf_count["emb_time"].append(emb_time)
-                    perf_count["mlp_time"].append(mlp_time)
-                    
-                if args.ckpt_method != "diff":
-                    tracker.reset()
+                    perf_count["save_time"].append(save_time)
+                    perf_count["list_time"].append(list_time)
+                    perf_count["ckpt_time"].append(ckpt_time)
+                    storage_con = get_folder_size(ckpt_path)
+                    perf_count["storage_consumption"].append(storage_con / (1024*1024))
             else :
                 # do track only
                 tracker.add(indexes)
-
-    if args.ckpt_method == "lsecp" or args.ckpt_method == "rocksdb":
+    
+    if args.ckpt_method == "incrcp":
         ckpt_sys.finish()
-
     if do_perf:
-        storage_con = get_folder_size(ckpt_path)
-        perf_count["storage_consumption"].append(storage_con / (1024*1024))
-        
         with open(args.perf_out_path, "w") as json_file:
             json.dump(perf_count, json_file, indent=4)
     
