@@ -6,7 +6,7 @@ naive_incre=$3
 ckpt_dir="/mnt/ssd/deepfm" # directory to save checkpoints
 dataset_path="/mnt/ssd/dataset/kaggle/train_sample.txt" # sampled kaggle dataset path
 check_freq=10 # checkpoint frequency: number of iterations
-num_batches=1500  # numebr of total training iterations
+num_batches=1000  # numebr of total training iterations
 result_path=/home/nsccgz_qylin_1/IncrCP_paper/experimental_results/deepfm # output path
 
 if [ $incrcp = 1 ]; then
